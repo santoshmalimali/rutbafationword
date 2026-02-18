@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Rutba Fashion World",
+  "description": "An AI-powered fashion website featuring virtual try-on, category-based collections, and multi-language support (Marathi, Hindi, English).",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
