@@ -2,25 +2,29 @@
 import { GoogleGenAI } from "@google/genai";
 
 export async function generateTryOnImage(userBase64: string, productBase64: string, productDesc: string, gender: string): Promise<string | null> {
+  // Ensure process.env.API_KEY is available in the browser context
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.error("Gemini API Key is missing. Please ensure process.env.API_KEY is configured.");
+    return null;
+  }
+
   try {
-    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
     
-    // The prompt is strictly followed as per user request to ensure realism.
-    // We provide both images: the person and the product.
-    const prompt = `Use the uploaded image of the ${gender} (Image 1) as the base model. 
-Keep the original face, hairstyle, beard, skin tone, and exact body structure unchanged. 
-Do not modify body shape, height, or facial features.
-Replace only the outfit with the EXACT clothing shown in Image 2.
-Description of clothing: ${productDesc}.
-The clothing from Image 2 must fit naturally according to his body posture and size.
-Maintain realistic fabric folds, shadows, lighting direction, and depth.
-Generate ultra-realistic 4K quality image.
-Professional fashion photoshoot look.
-Sharp focus, natural skin texture, no AI distortion.
-Studio lighting, soft shadow, clean background.
-The final result must look like a real DSLR product photoshoot.
-No cartoon effect, no artificial smoothing.
-Maintain authenticity and realism.`;
+    const prompt = `ACT AS A PROFESSIONAL VIRTUAL TRY-ON ENGINE.
+INPUTS: 
+- Image 1: The target person (${gender}).
+- Image 2: The source garment (Product).
+
+TASK:
+1. Extract the EXACT garment from Image 2. 
+2. Transfer this garment onto the person in Image 1.
+3. CRITICAL: DO NOT change the color, pattern, texture, logos, or design of the garment from Image 2. It must remain 100% IDENTICAL to the source product.
+4. Maintain the exact body structure, face, skin tone, and posture of the person in Image 1.
+5. Realistic physics: The garment must wrap naturally around the body, showing realistic folds and shadows based on the person's pose.
+6. Quality: 4K, ultra-realistic, professional fashion photography.
+7. Output must look like a real photo of that person wearing that specific product.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
@@ -50,7 +54,12 @@ Maintain authenticity and realism.`;
       }
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
+    const candidate = response.candidates?.[0];
+    if (!candidate || !candidate.content || !candidate.content.parts) {
+      throw new Error("No output parts received from Gemini");
+    }
+
+    for (const part of candidate.content.parts) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
@@ -58,7 +67,7 @@ Maintain authenticity and realism.`;
 
     return null;
   } catch (error) {
-    console.error("Gemini Error:", error);
+    console.error("Gemini Try-On Error:", error);
     return null;
   }
 }
