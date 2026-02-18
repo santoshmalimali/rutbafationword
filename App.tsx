@@ -5,19 +5,25 @@ import { Product, Category, Language, AdminSettings, User as UserType } from './
 import { TRANSLATIONS, INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_USERS } from './constants';
 import { generateTryOnImage } from './services/geminiService';
 
-// Helper to convert URL to Base64 (needed for Virtual Try-On with initial products)
+// Improved URL to Base64 with CORS handling
 async function urlToBase64(url: string): Promise<string> {
-  const response = await fetch(url);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = (reader.result as string).split(',')[1];
-      resolve(base64String);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  try {
+    const response = await fetch(url, { mode: 'cors' });
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        const base64String = result.split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error("Error fetching image for base64 conversion:", error);
+    throw new Error("Could not access product image. It might be blocked by security (CORS).");
+  }
 }
 
 // Icons Helper
@@ -165,12 +171,14 @@ const ProductDetail = ({ products, adminSettings, lang }: { products: Product[],
   const [userImage, setUserImage] = useState<string | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!product) return <div className="p-10 text-center">Product not found</div>;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setErrorMsg(null);
       const reader = new FileReader();
       reader.onloadend = () => setUserImage(reader.result as string);
       reader.readAsDataURL(file);
@@ -180,15 +188,14 @@ const ProductDetail = ({ products, adminSettings, lang }: { products: Product[],
   const handleTryOn = async () => {
     if (!userImage || !product) return;
     setIsProcessing(true);
+    setErrorMsg(null);
     try {
       const userBase64 = userImage.split(',')[1];
       
-      // Get Product Image Base64
       let productBase64 = "";
       if (product.image.startsWith('data:')) {
         productBase64 = product.image.split(',')[1];
       } else {
-        // Fetch from URL if needed
         productBase64 = await urlToBase64(product.image);
       }
       
@@ -198,10 +205,15 @@ const ProductDetail = ({ products, adminSettings, lang }: { products: Product[],
         `${product.name} - ${product.description}`, 
         product.gender
       );
-      setResultImage(result);
-    } catch (err) {
+      
+      if (result) {
+        setResultImage(result);
+      } else {
+        throw new Error("Failed to generate preview. Check API key or Image Quality.");
+      }
+    } catch (err: any) {
       console.error(err);
-      alert("AI processing failed. Please try again.");
+      setErrorMsg(err.message || "An unexpected error occurred during processing.");
     } finally {
       setIsProcessing(false);
     }
@@ -258,7 +270,7 @@ const ProductDetail = ({ products, adminSettings, lang }: { products: Product[],
               </button>
               
               <button 
-                onClick={() => setIsTryOnOpen(true)}
+                onClick={() => { setIsTryOnOpen(true); setErrorMsg(null); }}
                 className="w-full bg-stone-900 hover:bg-stone-800 text-white py-4 rounded-2xl flex items-center justify-center gap-3 font-bold transition-all transform hover:scale-[1.02] active:scale-95"
               >
                 <Icon name="camera" className="w-6 h-6" />
@@ -280,6 +292,13 @@ const ProductDetail = ({ products, adminSettings, lang }: { products: Product[],
             </div>
             
             <div className="flex-1 overflow-y-auto p-8">
+              {errorMsg && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-xl flex items-center gap-3 text-sm font-medium">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  {errorMsg}
+                </div>
+              )}
+
               {!resultImage ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
                   <div className="space-y-6">
@@ -325,7 +344,7 @@ const ProductDetail = ({ products, adminSettings, lang }: { products: Product[],
                   </div>
                   <div className="flex justify-center gap-4 mt-6">
                     <button 
-                      onClick={() => {setResultImage(null); setUserImage(null);}}
+                      onClick={() => {setResultImage(null); setUserImage(null); setErrorMsg(null);}}
                       className="px-8 py-3 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-50 font-medium transition-all"
                     >
                       Try Again
