@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 
 export async function generateTryOnImage(userBase64: string, productBase64: string, productDesc: string, gender: string): Promise<string | null> {
   try {
-    const ai = new GoogleGenAI({ apiKey:import.meta.env.VITE_GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
     
     // The prompt is strictly followed as per user request to ensure realism.
     // We provide both images: the person and the product.
